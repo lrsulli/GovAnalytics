@@ -1,0 +1,276 @@
+---
+title: "Session 6: Governance in Space"
+---
+
+```{r}
+token='&$$app_token=qkzOjPpAsJDHAxBVNro7U82j5'
+
+endpoint="https://data.wa.gov/resource/74eq-kst5.json?"
+
+filters='&jurisdiction_type=Statewide'
+sqlQueries='&$where=election_year >= 2012'
+limit='$limit=4000000'
+
+urlLink = paste0(endpoint,limit,filters,token)
+```
+
+```{r}
+library(jsonlite)
+contributions = fromJSON(urlLink)
+```
+
+```{r}
+is.data.frame(contributions)
+```
+
+```{r}
+names(contributions)
+```
+
+```{r}
+con = contributions[,c('contributor_state','contributor_zip','amount','election_year','party')]
+```
+
+```{r}
+str(con)
+```
+
+```{r}
+con$amount=as.numeric(con$amount)
+```
+
+```{r}
+table(con$contributor_state)
+```
+
+```{r}
+WAzip = con[con$contributor_state%in%'WA',]
+```
+
+```{r}
+row.names(WAzip) = NULL
+```
+
+```{r}
+'985'>'9800'
+```
+
+```{r}
+WAzip$contributor_zip[1]
+```
+
+```{r}
+WAzip$contributor_zip=as.numeric(WAzip$contributor_zip)
+```
+
+```{r}
+WAzip = WAzip[(WAzip$contributor_zip <= 99403) & (WAzip$contributor_zip >= 98001),]
+```
+
+```{r}
+WAzip = WAzip[complete.cases(WAzip),]
+```
+
+```{r}
+row.names(WAzip)=NULL
+```
+
+```{r}
+numericColumns = c('amount')
+aggregateBY = 'contributor_zip'
+
+WAzip_new = aggregate(WAzip[,numericColumns], by=list(WAzip[,aggregateBY]), sum)
+names(WAzip_new)=c('contributor_zip','amount')
+```
+
+```{r}
+head(WAzip_new)
+```
+
+Getting the Map
+
+```{r}
+compressedMap= "https://github.com/EvansDataScience/data/raw/master/WAzips.zip"
+```
+
+```{r}
+library(utils)
+temp=tempfile()
+download.file(compressedMap, temp)
+unzip(temp)
+```
+
+```{r}
+(maps = list.files(pattern = 'shp'))
+```
+
+```{r}
+library(rgdal)
+wazipMap <- rgdal::readOGR("SAEP_ZIP_Code_Tabulation_Areas.shp", stringsAsFactors=F)
+```
+
+```{r}
+names(wazipMap)
+```
+
+```{r}
+str(wazipMap$ZCTA5CE10)
+```
+
+```{r}
+wazipMap$ZCTA5CE10=as.numeric(wazipMap$ZCTA5CE10)
+```
+
+```{r}
+map = merge(wazipMap,WAzip_new, by.x='ZCTA5CE10', by.y='contributor_zip', all.x=F)
+```
+
+```{r}
+nrow(map)
+```
+
+```{r}
+nrow(wazipMap)
+```
+
+```{r}
+plot(wazipMap,col='black')
+plot(map,col='pink',border='grey',add=T)
+```
+
+```{r}
+map$contribDen=map$amount/map$POP2017
+```
+
+```{r}
+summary(map$contribDen)
+```
+
+```{r}
+map@data[map$contribDen==Inf,]['contribDen']
+```
+
+```{r}
+map=map[map$contribDen!=Inf,]
+```
+
+```{r}
+summary(map$contribDen)
+```
+
+```{r}
+library(RColorBrewer)
+library(classInt)
+```
+
+```{r}
+varToPlot = map$contribDen
+
+numberOfClasses = 5
+colorForScale = 'YlGnBu'
+colors = brewer.pal(numberOfClasses, colorForScale)
+intervals <- classIntervals(varToPlot, numberOfClasses,
+                            style = 'quantile',
+                            dataPrecision = 2)
+colorPallette <- findColours(intervals, colors)
+```
+
+```{r}
+legendText = 'contirbution rate'
+shrinkLegend = 0.4
+title = 'Contribution towards candidates in WA since 2012'
+
+plot(wazipMap,col='red',main=title)
+plot(map, col=colorPallette,border='grey',add=T)
+
+legend('topright', legend = names(attr(colorPallette, 'table')),
+       fill = attr(colorPallette, 'palette'), cex = shrinkLegend,
+       bty = 'n',
+       title = legendText)
+```
+
+What if we had categories?
+
+```{r}
+library(XML)
+library(RCurl)
+
+wikiLink="https://en.wikipedia.org/wiki/Democracy_Index" 
+
+wikiLinkContents = getURL(wikiLink) 
+wikiTables = readHTMLTable(wikiLinkContents,stringsAsFactors=FALSE)
+demodex=wikiTables[[5]]
+names(demodex)
+```
+
+```{r}
+levelCat=c("Authoritarian","Hybrid regime","Flawed democracy","Full democracy")
+
+demodex$Category=factor(demodex$Category,
+                        levels = levelCat,
+                        labels=levelCat,ordered=T)
+```
+
+```{r}
+demodex=demodex[complete.cases(demodex),]
+```
+
+```{r}
+compressedMap2='https://github.com/EvansDataScience/data/raw/master/worldMap.zip'
+
+temp=tempfile()
+download.file(compressedMap2, temp)
+unzip(temp)
+```
+
+```{r}
+(maps=list.files(pattern = 'shp'))
+```
+
+```{r}
+library(rgdal)
+worldMap <- rgdal::readOGR('worldMap.shp',stringsAsFactors = F)
+```
+
+```{r}
+names(worldMap)
+```
+
+```{r}
+worldMapDem=merge(worldMap,demodex, by.x='NAME', by.y='Country', all=F)
+```
+
+```{r}
+plot(worldMap,col='black')
+plot(worldMapDem,col='pink',border='grey',add=T)
+```
+
+```{r}
+library(RColorBrewer)
+library(classInt)
+```
+
+```{r}
+varToPlot2=worldMapDem$Category
+```
+
+```{r}
+numberofClasses = length(levels(varToPlot2))
+colorForScale='Set2'
+colors = brewer.pal(numberofClasses, colorForScale)
+```
+
+```{r}
+legendText = 'Democracy Level'
+shrinkLegend = 0.4
+title="How democracy is spread around the world (2016)"
+
+plot(worldMap,col='black',main=title)
+plot(worldMapDem,col=colors[varToPlot2],border='grey',add=T)
+
+legend('left', legend = levels(varToPlot2),
+       fill = colors,
+       cex = shrinkLegend,
+       bty = 'n',
+       title = legendText)
+```
